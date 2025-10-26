@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+gcc -c tokenizer.c -o tokenizer.o
