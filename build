@@ -9,13 +9,13 @@ compile_tokenizer() {
 	gcc -c tokenizer.c -o tokenizer.o
 }
 
-compile_test() {
-	gcc test.c tokenizer.o -o test
+compile_runner() {
+	gcc tokenize.c tokenizer.o -o tokenize 
 }
 
 compile_all() {
 	compile_tokenizer
-	compile_test
+	compile_runner
 }
 
 if [[ $# -lt $REQUIRED_ARGUMENTS ]]; then
@@ -24,7 +24,7 @@ fi
 
 echo -e "Compiling target \"$1\"..."
 case "$1" in
-	"tokenizer")
+	"tokenizer" | "lib" | "library")
 		if compile_tokenizer ; then 
 			echo "Compilation succeeded."
 		else
@@ -32,8 +32,8 @@ case "$1" in
 		fi
 		;;
 
-	"test")
-		if compile_test ; then 
+	"tokenize" | "runner")
+		if compile_runner ; then 
 			echo "Compilation succeeded."
 		else
 			echo "Compilation failed."
