@@ -1,0 +1,2 @@
+- [x] Fix segfaults
+- [ ] Update token types during main loop. Maybe use a big function that does the analysis each time before calling `tokens_advance`
