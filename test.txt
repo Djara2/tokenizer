@@ -5,3 +5,4 @@ float field "Cold water"
 int   field "Jello yield"
 
 constrain on "Jello Boxes" size is (13 + 12)
+constrain on "Jello Boxes" size is (1+2)

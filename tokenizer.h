@@ -44,10 +44,16 @@ struct TokenizerState {
 	unsigned int reading_token: 1;
 };
 
+struct TokenMetadata {
+	unsigned int numeric_digits;
+	unsigned int dots; 
+};
+
 struct Token {
     char *value;
     unsigned int value_length;
     unsigned int value_capacity;
+    struct TokenMetadata metadata;
     enum TokenType type;
 };
 
@@ -66,6 +72,7 @@ enum StorageClass {
 };
 
 void token_print(struct Token *token);
+int lex(struct Token *token);
 
 // Used to not clutter the instructions within tokenize(). Makes sure the tokens buffer
 // is resized as needed.
@@ -75,7 +82,7 @@ struct Token* tokens_advance(struct Token **tokens, size_t *length, size_t *capa
 int token_add_character(struct Token *token, char c);
 
 // Handles characters such as "(" and ")" which are treated as a whole token outright
-int tokens_handle_special_character(struct Token **tokens, size_t *length, size_t *capacity, struct Token **current_token, struct TokenizerState *state, char c, size_t index);
+int tokens_handle_special_character(struct Token **tokens, size_t *length, size_t *capacity, struct Token **current_token, struct TokenMetadata **current_metadata, struct TokenizerState *state, char c, size_t index);
 
 struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, size_t *tokens_capacity);
 #endif

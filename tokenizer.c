@@ -41,8 +41,10 @@ int tokens_init(struct Token *tokens, size_t length) {
 	}
 	
 	struct Token *current;
+	struct TokenMetadata *metadata;
 	for (size_t i = 0; i < length; i++) {
 		current = &(tokens[i]);
+		metadata = &(current->metadata);
 		
 		// Give the token 32 characters of space for now.
 		current->type = TOKEN_TYPE_NONE;
@@ -53,6 +55,9 @@ int tokens_init(struct Token *tokens, size_t length) {
 			tokens_destroy(tokens, length);
 			return EXIT_FAILURE;
 		}
+
+		metadata->numeric_digits = 0;
+		metadata->dots = 0;
 	}
 
 	return EXIT_SUCCESS;
@@ -189,6 +194,66 @@ int token_add_character(struct Token *token, char c) {
 	return EXIT_SUCCESS;
 }
 
+// Updates the metadata of a token (e.g. sets the proper token type attribute)
+int lex(struct Token *token) {
+	if (token == NULL) {
+		fprintf(stderr, "[%s] ERROR: Provided argument `struct Token *token` is a NULL pointer.\n", __func__);
+		return EXIT_FAILURE;
+	}
+	
+	if (token->type != TOKEN_TYPE_NONE) {
+		fprintf(stderr, "[%s] INFO: Received a token which has already had its type inferred (condition `token->type != TOKEN_TYPE_NONE` was true).\n", __func__);
+		return EXIT_FAILURE;
+	}
+
+	struct TokenMetadata *metadata = &(token->metadata);
+	if (metadata->numeric_digits == token->value_length) {
+		token->type = TOKEN_TYPE_INTEGER_LITERAL;
+		return EXIT_SUCCESS;
+	}
+
+	if (metadata->dots == 1 && metadata->numeric_digits == (token->value_length) - 1) {
+		token->type = TOKEN_TYPE_FLOAT_LITERAL;
+		return EXIT_SUCCESS;
+	}
+	
+	// Replace this with a hashset later. It's 2:30AM and I'm a little tired
+	if (strcmp(token->value, "int") == 0) {
+		token->type = TOKEN_TYPE_KEYWORD;
+		return EXIT_SUCCESS;
+	}
+	else if (strcmp(token->value, "float") == 0) {
+		token->type = TOKEN_TYPE_KEYWORD;
+		return EXIT_SUCCESS;
+	}
+	else if (strcmp(token->value, "field") == 0) {
+		token->type = TOKEN_TYPE_KEYWORD;
+		return EXIT_SUCCESS;
+	}
+	else if (strcmp(token->value, "constrain") == 0) {
+		token->type = TOKEN_TYPE_KEYWORD;
+		return EXIT_SUCCESS;
+	}
+	else if (strcmp(token->value, "of") == 0) {
+		token->type = TOKEN_TYPE_KEYWORD;
+		return EXIT_SUCCESS;
+	}
+	else if (strcmp(token->value, "is") == 0) {
+		token->type = TOKEN_TYPE_KEYWORD;
+		return EXIT_SUCCESS;
+	}
+	else if (strcmp(token->value, "size") == 0) {
+		token->type = TOKEN_TYPE_KEYWORD;
+		return EXIT_SUCCESS;
+	} 
+	else if (strcmp(token->value, "on") == 0) {
+		token->type = TOKEN_TYPE_KEYWORD;
+		return EXIT_SUCCESS;
+	}
+	else
+		return EXIT_FAILURE;
+}
+
 // Returns a pointer to the next token
 struct Token* tokens_advance(struct Token **tokens, size_t *length, size_t *capacity) {
 	if (tokens == NULL) {
@@ -230,7 +295,7 @@ struct Token* tokens_advance(struct Token **tokens, size_t *length, size_t *capa
 	return next_token;
 }
 
-int tokens_handle_special_character(struct Token **tokens, size_t *length, size_t *capacity, struct Token **current_token, struct TokenizerState *state, char c, size_t index) {
+int tokens_handle_special_character(struct Token **tokens, size_t *length, size_t *capacity, struct Token **current_token, struct TokenMetadata **current_metadata, struct TokenizerState *state, char c, size_t index) {
 	if (tokens == NULL) {
 		fprintf(stderr, "[%s] ERROR: Provided argument `struct Token **tokens` is a NULL pointer.\n", __func__);
 		return EXIT_FAILURE;
@@ -246,6 +311,17 @@ int tokens_handle_special_character(struct Token **tokens, size_t *length, size_
 		return EXIT_FAILURE;
 	}
 
+	if (current_token == NULL) {
+		fprintf(stderr, "[%s] ERROR: Provided argument `struct Token **current_token` is a NULL pointer.\n", __func__);
+		return EXIT_FAILURE;
+	}
+
+	if (current_metadata == NULL) {
+		fprintf(stderr, "[%s] ERROR: Provided argument `struct TokenMetdata **current_metadata` is a NULL pointer.\n", __func__);
+		return EXIT_FAILURE;
+	}
+
+	
 	// Case 1: If we are reading a string literal, then this 
 	//         special symbol is part of it.
 	int status = 0;
@@ -271,6 +347,7 @@ int tokens_handle_special_character(struct Token **tokens, size_t *length, size_
 		// We should advance a token only if the current token has non-zero length.
 		if ( (*current_token)->value_length > 0 ) {
 			(*current_token) = tokens_advance(tokens, length, capacity);
+			(*current_metadata) = &((*current_token)->metadata);
 			if ( (*current_token) == NULL ) {
 				fprintf(stderr, "[%s] Failed to advance to the next token.\n", __func__);
 				tokens_destroy(
@@ -328,10 +405,6 @@ int tokens_handle_special_character(struct Token **tokens, size_t *length, size_
 				(*current_token)->type = TOKEN_TYPE_SLASH;
 				break;
 			
-			case '.':	
-				(*current_token)->type = TOKEN_TYPE_DOT;
-				break;
-
 			default:
 				fprintf(stderr, "[%s] ERROR: Special character '%c' is unrecognized.\n", __func__, c);
 				return EXIT_FAILURE;
@@ -351,6 +424,7 @@ int tokens_handle_special_character(struct Token **tokens, size_t *length, size_
 		
 		// Advance a token yet again
 		(*current_token) = tokens_advance(tokens, length, capacity);
+		(*current_metadata) = &((*current_token)->metadata);
 		if ( (*current_token) == NULL ) {
 			fprintf(stderr, "[%s] ERROR: Failed to advance to next token.\n", __func__);
 			tokens_destroy( 
@@ -430,13 +504,13 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 	special_char_lookup_table['-'] = 1;
 	special_char_lookup_table['*'] = 1;
 	special_char_lookup_table['/'] = 1;
-	special_char_lookup_table['.'] = 1;
 	printf("Done!\n");
 	
 	// Create tokens
 	size_t index  = 0;
 	char c = 0;
 	struct Token *current_token = &(tokens[0]);
+	struct TokenMetadata *current_metadata = &(current_token->metadata);
 	unsigned int status = 0; 
 	printf("[%s] INFO: Initiating main loop. Index is %zu. Data length is %zu.\n", __func__, index, data_length);
 	while(index < data_length) {
@@ -444,13 +518,14 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 		c = data[index];
 		// Case: Dealing with a special character
 		printf("[%s] DEBUG: Looking up character \"%c\" in the special character table... ", __func__, c);
-		if (special_char_lookup_table[c]) {
+		if ( special_char_lookup_table[c] && state.quote_opened == 0 ) {
 			printf("Found!\n");
 			status = tokens_handle_special_character(
 					&tokens, 
 					tokens_length, 
 					tokens_capacity,
 					&current_token,
+					&current_metadata,
 					&state,
 					c,
 					index
@@ -512,7 +587,7 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 					if (state.reading_token) {
 						state.reading_token = 0;
 						current_token = tokens_advance(&tokens, tokens_length, tokens_capacity);
-
+						current_metadata = &(current_token->metadata);
 						if (current_token == NULL) {
 							fprintf(stderr, "[%s] Failed to advance to next token.\n", __func__);
 							tokens_destroy(tokens, (*tokens_length));
@@ -582,6 +657,7 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 						// Closing quote for string literal marks the end of the current
 						// token and the start of a new token.
 						current_token = tokens_advance(&tokens, tokens_length, tokens_capacity);
+						current_metadata = &(current_token->metadata);
 						if (current_token == NULL) {
 							fprintf(stderr, "[%s] ERROR: Failed to advance to next token after processing the final quote in a string literal. Tokens length was %zu and this breaking character was at index %zu.\n", __func__, (*tokens_length), index);
 							tokens_destroy(tokens, (*tokens_length));
@@ -627,6 +703,29 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 				}
 				*/
 				
+				// Update metdata (useful for lexing)
+				switch (c) {
+					case '.':
+						current_metadata->dots++;
+						break;
+
+					case '0':
+					case '1':
+					case '2':
+					case '3':
+					case '4':
+					case '5':
+					case '6':
+					case '7':
+					case '8':
+					case '9':
+						current_metadata->numeric_digits++;
+						break;
+
+					default:
+						break;	
+				}
+
 				printf("[%s] DEBUG: Calling `token_add_character`... ", __func__);
 				if (token_add_character(current_token, c) == EXIT_FAILURE) {
 					fprintf(stderr, "[%s] ERROR: Failed to capture token #%zu. Error occurred on character '%c' at index %zu in the data.\n", __func__, (*tokens_length), c, index);
@@ -634,6 +733,7 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 				}
 				else 
 					state.reading_token = 1;
+
 				printf("Succeeded.");
 				index++;
 		} // end switch(c)

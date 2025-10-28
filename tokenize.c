@@ -66,6 +66,9 @@ int main(int argc, char **argv) {
 		free(data);
 		return 1;
 	}
+	
+	for (size_t i = 0; i < tokens_length; i++) 
+		lex( &(tokens[i]) );
 
 	for (size_t i = 0; i < tokens_length; i++)
 		token_print(&(tokens[i]));
