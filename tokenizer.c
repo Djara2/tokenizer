@@ -265,15 +265,20 @@ int tokens_handle_special_character(struct Token **tokens, size_t *length, size_
 	//         We must separate from the current token and mark this
 	//         as its own.
 	else {
-		// Advance a token
-		(*current_token) = tokens_advance(tokens, length, capacity);
-		if ( (*current_token) == NULL ) {
-			fprintf(stderr, "[%s] Failed to advance to the next token.\n", __func__);
-			tokens_destroy(
-				(*tokens),
-				(*length)
-			);
-			return EXIT_FAILURE;
+		// If whitespace precedes this token, then (*current_token) is already a pointer
+		// to the appropriate token; however, it is possible that an expression was written
+		// without spaces. For example 2+3 does not have spaces.
+		// We should advance a token only if the current token has non-zero length.
+		if ( (*current_token)->value_length > 0 ) {
+			(*current_token) = tokens_advance(tokens, length, capacity);
+			if ( (*current_token) == NULL ) {
+				fprintf(stderr, "[%s] Failed to advance to the next token.\n", __func__);
+				tokens_destroy(
+					(*tokens),
+					(*length)
+				);
+				return EXIT_FAILURE;
+			}
 		}
 		
 		
@@ -389,14 +394,23 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 	}
 	printf("Done!\n");
 	
+	// Initialize tokens
+	printf("[%s] INFO: Initializing tokens... ", __func__);
+	if (tokens_init(tokens, (*tokens_capacity)) == EXIT_FAILURE) {
+		fprintf(stderr, "[%s] ERROR: Failed to initialize tokens buffer.\n", __func__);
+		tokens_destroy(tokens, (*tokens_capacity));
+		return NULL;
+	}
+	printf("Done!\n");
+	
 	// Internal structure for keeping track of special behavior (e.g. escaping characters)
 	printf("[%s] INFO: Creating TokenizerState struct... ", __func__);
 	struct TokenizerState state = {
-		.ignore_whitespace = 0, 
+		.ingest_whitespace = 0, 
 		.backslash_opened  = 0,
 		.quote_opened      = 0,
 		.reading_token     = 0
-	};
+	}; 
 	printf("Done!\n");
 
 	// Fast lookup for special characters. Greatly reduces amount of
@@ -429,7 +443,9 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 		printf("Index is %zu. Tokens processed is %zu.\n", index, (*tokens_length));
 		c = data[index];
 		// Case: Dealing with a special character
+		printf("[%s] DEBUG: Looking up character \"%c\" in the special character table... ", __func__, c);
 		if (special_char_lookup_table[c]) {
+			printf("Found!\n");
 			status = tokens_handle_special_character(
 					&tokens, 
 					tokens_length, 
@@ -439,7 +455,7 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 					c,
 					index
 			);
-
+			
 			if (status == EXIT_FAILURE) {
 				fprintf(stderr, "[%s] ERROR: Failed to handle special character '%c' at index %zu.\n", __func__, c, index); 
 				tokens_destroy(tokens, (*tokens_length));
@@ -450,10 +466,12 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 			// Do not engage the switch statement
 			continue;
 		}
+		printf("Not found!\n");
 
 		// Case: Dealing with an ordinary character
 		switch (c) {
 			case EOF:
+				printf("[%s] DEBUG: Entered EOF case.\n", __func__);
 				return tokens;
 				break;
 
@@ -463,6 +481,7 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 			case '\t':
 			case '\n':
 			case ' ':
+				printf("[%s] DEBUG: Entered whitespace case.\n", __func__);
 				// Case 0: Ignore attempts to escape whitespace. Why are you doing that.
 				if (state.backslash_opened)
 					state.backslash_opened = 0;
@@ -479,7 +498,7 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 				// Case 2.1: Special case in which we are not ignoring whitespace 
 				// (e.g. when within a string literal). In this case, 
 				// we are adding the whitespaces to the current token's value
-				if (! state.ignore_whitespace ) {
+				if (state.ingest_whitespace) {
 					if (token_add_character(current_token, c) == EXIT_FAILURE) {
 						fprintf(stderr, "[%s] ERROR: Failed to capture token #%zu. Error occurred on character '%c' at index %zu in the data.\n", __func__, (*tokens_length), c, index);
 						tokens_destroy(tokens, (*tokens_length));
@@ -490,12 +509,15 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 				//           then this space means that the current token has ended.
 				//           We are ignoring spaces, so this space has no meaning. 
 				else {
-					state.reading_token = 0;
-					current_token = tokens_advance(&tokens, tokens_length, tokens_capacity);
-					if (current_token == NULL) {
-						fprintf(stderr, "[%s] Failed to advance to next token.\n", __func__);
-						tokens_destroy(tokens, (*tokens_length));
-						return NULL;
+					if (state.reading_token) {
+						state.reading_token = 0;
+						current_token = tokens_advance(&tokens, tokens_length, tokens_capacity);
+
+						if (current_token == NULL) {
+							fprintf(stderr, "[%s] Failed to advance to next token.\n", __func__);
+							tokens_destroy(tokens, (*tokens_length));
+							return NULL;
+						}
 					}
 				}
 
@@ -509,6 +531,7 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 			// (1) Escaping spaces is NOT permitted.
 			// (2) Escaping quotes is permitted.
 			case '\\':
+				printf("[%s] DEBUG: Entered backslash case.\n", __func__);
 				// Case 1: We have not read a backslash previously, so 
 				//         the next character we read is escaped.
 				if (! state.backslash_opened )
@@ -529,7 +552,8 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 				break;
 
 			// Escape spaces  
-			case '"':				
+			case '"':	
+				printf("[%s] DEBUG: Entered double quote case.\n", __func__);
 				// Case 1: A quote has already been opened, and we are reading a string literal.
 				//         This quote EITHER signifies an escaped quote (Case 1.1) OR it signifies
 				//         the closing of the string literal (Case 1.2)
@@ -564,8 +588,9 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 							return NULL;
 						}
 						state.quote_opened = 0;
-						state.ignore_whitespace = 1;
+						state.ingest_whitespace = 0;
 						state.reading_token = 0;
+						index++;
 					}
 				}
 				// Case 2: If a quote was NOT opened before, then this opens it.
@@ -575,24 +600,41 @@ struct Token* tokenize(char *data, size_t data_length, size_t *tokens_length, si
 				//         (2) If we were not reading a token before, we are now 
 				//             reading a token.
 				else {
+					current_token->type = TOKEN_TYPE_STRING_LITERAL;
 					state.quote_opened = 1;
-					state.ignore_whitespace = 0;
+					state.ingest_whitespace = 1;
 					state.reading_token = 1;
+					// current_token = tokens_advance(&tokens, tokens_length, tokens_capacity);
+					index++;
 				}	
 				break;
 					
 			// Just reading regular characters, so we add to the token's value
 			default:
-				if (state.backslash_opened) 
+				printf("[%s] DEBUG: Entered regular character case.\n", __func__);
+				printf("[%s] DEBUG: Checking if backslash was opened...\n", __func__);
+				if (state.backslash_opened) {
+					printf("[%s] DEBUG: Backslash was opened!\n", __func__);
 					state.backslash_opened = 0;
+				}
 				
-				if ( ! state.reading_token )
-					state.reading_token = 1;
-
+				/*
+				printf("[%s] DEBUG: Checking if reading_token is active...\n", __func__);
+				if ( ! state.reading_token ) {
+					printf("[%s] DEBUG: Reading token was inactive.\n", __func__);
+					printf("Trying to set reading_token to 1.\n");
+					printf("Success.\n");
+				}
+				*/
+				
+				printf("[%s] DEBUG: Calling `token_add_character`... ", __func__);
 				if (token_add_character(current_token, c) == EXIT_FAILURE) {
 					fprintf(stderr, "[%s] ERROR: Failed to capture token #%zu. Error occurred on character '%c' at index %zu in the data.\n", __func__, (*tokens_length), c, index);
 					tokens_destroy(tokens, (*tokens_length));
 				}
+				else 
+					state.reading_token = 1;
+				printf("Succeeded.");
 				index++;
 		} // end switch(c)
 	} // end tokenize while

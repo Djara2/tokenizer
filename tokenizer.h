@@ -38,11 +38,10 @@ enum TokenizerStateFlag {
 };
 
 struct TokenizerState {
-	size_t ignore_whitespace: 1;
-	size_t backslash_opened: 1;
-	size_t quote_opened: 1;
-	size_t reading_token: 1;
-	size_t unused: 60;
+	unsigned int ingest_whitespace: 1;
+	unsigned int backslash_opened: 1;
+	unsigned int quote_opened: 1;
+	unsigned int reading_token: 1;
 };
 
 struct Token {

@@ -1,2 +1,55 @@
 #!/usr/bin/env bash
-gcc -c tokenizer.c -o tokenizer.o
+usage() {
+	echo "This compilation script requires $REQUIRED_ARGUMENTS positional arguments to run."
+	echo -e "Only $# of the $REQUIRED_ARGUMENTS were provided.\n"
+	echo "Usage: build [tokenizer|test|all]"
+}
+
+compile_tokenizer() {
+	gcc -c tokenizer.c -o tokenizer.o
+}
+
+compile_test() {
+	gcc test.c tokenizer.o -o test
+}
+
+compile_all() {
+	compile_tokenizer
+	compile_test
+}
+
+if [[ $# -lt $REQUIRED_ARGUMENTS ]]; then
+	usage
+fi
+
+echo -e "Compiling target \"$1\"..."
+case "$1" in
+	"tokenizer")
+		if compile_tokenizer ; then 
+			echo "Compilation succeeded."
+		else
+			echo "Compilation failed."
+		fi
+		;;
+
+	"test")
+		if compile_test ; then 
+			echo "Compilation succeeded."
+		else
+			echo "Compilation failed."
+		fi
+		;;
+	
+	"all")
+		if compile_all ; then
+			echo "Compilation succeeded."
+		else
+			echo "Compilation failed."
+		fi
+		;;
+
+	*)  
+		echo -e "Build target \"$1\" is invalid.\n"
+		usage
+
+esac
